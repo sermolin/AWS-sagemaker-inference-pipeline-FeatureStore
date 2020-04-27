@@ -27,6 +27,9 @@ from botocore.exceptions import ClientError
 from sagemaker_containers.beta.framework import (
     content_types, encoders, env, modules, transformer, worker)
 
+aws_region = 'us-west-1'
+feature_store_table = 'feature_store'
+
 # Since we get a headerless CSV file we specify the column names here.
 feature_columns_names = [
     'sex', # M, F, and I (infant)
@@ -81,8 +84,8 @@ split_2_feature_columns_dtype = {
 
 label_column_dtype = {'rings': np.float64} # +1.5 gives the age in years
 
-dynamodb = boto3.resource("dynamodb", region_name='us-west-1')
-table = dynamodb.Table('feature_store')
+dynamodb = boto3.resource("dynamodb", region_name=aws_region)
+table = dynamodb.Table(feature_store_table)
 
 class DecimalEncoder(json.JSONEncoder):
     def default(self, o):
@@ -177,22 +180,23 @@ def load_and_merge_from_feature_store(inputdf):
         for arr in id_array_batched:
             response = dynamodb.batch_get_item(
                 RequestItems={
-                    'feature_store': ddb_request_transform(arr)
+                    feature_store_table: ddb_request_transform(arr)
                 }
             )
-            responses.extend(response['Responses']['feature_store'])
+            responses.extend(response['Responses'][feature_store_table])
             time.sleep(0.5)
 
 
     except ClientError as e:
-        print(e.response['Error']['Message'])
+        print(e.response['Error']['Message']) #TODO: sys.exit with error message
     else:
         #print(json.dumps(response['Responses']['feature_store'], indent=4, cls=DecimalEncoder))
         #item = response['Item']
         #print("GetItem succeeded:")
         #print(json.dumps(item, indent=4, cls=DecimalEncoder))    
-        print(json.dumps(responses, indent=4, cls=DecimalEncoder))
-    print("responses", responses)
+        #print(json.dumps(responses, indent=4, cls=DecimalEncoder))
+        pass
+    #print("responses", responses)
     split_2_df = pd.DataFrame(responses, columns=split_2_feature_columns_names).astype(split_2_feature_columns_dtype)
     joined_df = inputdf.merge(split_2_df, left_on='ID', right_on='ID').drop('ID', axis=1)
     return joined_df
