@@ -1,0 +1,64 @@
+AWSTemplateFormatVersion: 2010-09-09
+Parameters:
+  GitRepoUrl:
+    Type: String
+    Description: The Github repository
+    Default: https://github.com/sermolin/AWS-sagemaker-inference-pipeline-FeatureStore
+
+  GitSecretsArn:
+    Type: String
+    Description: The ARN for the secrets used for connecting to the Github repository
+
+Resources:
+  FeatureTable:
+    Type: AWS::DynamoDB::Table
+    Properties: 
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: 
+        - AttributeName: ID
+          AttributeType: S
+      KeySchema: 
+        - AttributeName: ID
+          KeyType: HASH
+
+  GitRepo:
+    Type: AWS::SageMaker::CodeRepository
+    Properties: 
+      GitConfig: 
+        Branch: 'master'
+        RepositoryUrl: !Ref GitRepoUrl
+        SecretArn: !Ref GitSecretsArn
+
+  NotebookRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-Notebookrole"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          -
+            Effect: Allow
+            Action: sts:AssumeRole
+            Principal:
+              Service: sagemaker.amazonaws.com
+      Policies:
+        -
+          PolicyName: !Sub "${AWS::StackName}-DDBAccess"
+          PolicyDocument: 
+            Version: '2012-10-17'
+            Statement: 
+              -
+                Effect: Allow
+                Action:
+                  - 'dynamodb:BatchGetItem'
+                Resource: !GetAtt FeatureTable.Arn
+
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSageMakerFullAccess
+ 
+  Notebook:
+    Type: AWS::SageMaker::NotebookInstance
+    Properties: 
+      InstanceType: ml.t3.2xlarge
+      RoleArn: !GetAtt NotebookRole.Arn
+      DefaultCodeRepository: !GetAtt GitRepo.CodeRepositoryName
